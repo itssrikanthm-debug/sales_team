@@ -9,13 +9,15 @@ export interface Vendor {
   total_price: number;
   verified_photo_url: string | null;
   business_photo_url: string | null;
-  salesperson_id: string;
+  salesperson_id: string | null;
+  salesperson_email: string | null;
   created_at: string;
   status: 'pending' | 'approved' | 'rejected';
   approved_listing_count: number | null;
   approved_earnings: number | null;
   approved_at: string | null;
   approved_by: string | null;
+  approver_email: string | null;
   rejection_reason: string | null;
   admin_notes: string | null;
   categories?: Category;

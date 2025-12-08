@@ -8,10 +8,9 @@ import {
   approveVendor,
   rejectVendor,
   getAllVendors,
-  getUserRole,
   supabase
 } from '@/lib/supabase/client';
-import { Vendor, UserRole } from '@/types/types';
+import { Vendor } from '@/types/types';
 import {
   ThemeProvider,
   createTheme,
@@ -151,10 +150,17 @@ export default function AdminDashboard() {
   const [approvedCount, setApprovedCount] = useState<number>(0);
   const [rejectionReason, setRejectionReason] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
+  const [salespersonFilter, setSalespersonFilter] = useState<string>('all');
+  const [salespersonEmails, setSalespersonEmails] = useState<string[]>([]);
   const { user, signOut } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+
     checkAdminAccess();
   }, [user]);
 
@@ -164,20 +170,14 @@ export default function AdminDashboard() {
       return;
     }
 
-    try {
-      const roleData = await getUserRole(user.id);
-      if (roleData.role !== 'admin') {
-        router.push('/dashboard');
-        return;
-      }
-
-      await loadVendors();
-    } catch (error) {
-      console.error('Access check error:', error);
+    // Check admin access based on email
+    if (user.email !== 'admin@sylonow.com') {
       router.push('/dashboard');
-    } finally {
-      setLoading(false);
+      return;
     }
+
+    await loadVendors();
+    setLoading(false);
   };
 
   const loadVendors = async () => {
@@ -188,6 +188,8 @@ export default function AdminDashboard() {
       ]);
       setPendingVendors(pendingData);
       setAllVendors(allData);
+      const emails = Array.from(new Set(allData.map(v => v.salesperson_email).filter(Boolean))) as string[];
+      setSalespersonEmails(emails);
     } catch (error) {
       console.error('Error loading vendors:', error);
       setSnackbar({
@@ -228,6 +230,7 @@ export default function AdminDashboard() {
         await approveVendor(
           approvalDialog.vendor!.id,
           user.id,
+          user.email!,
           approvedCount,
           adminNotes.trim() || undefined
         );
@@ -240,6 +243,7 @@ export default function AdminDashboard() {
         await rejectVendor(
           approvalDialog.vendor!.id,
           user.id,
+          user.email!,
           rejectionReason,
           adminNotes.trim() || undefined
         );
@@ -251,18 +255,89 @@ export default function AdminDashboard() {
       }
 
       await loadVendors(); // Refresh the data
-    } catch (error) {
-      console.error('Approval error:', error);
+    } catch (error: any) {
+      console.error('Approval error details:', error);
+      const errorMsg = error?.message || (error ? JSON.stringify(error) : 'Unknown error occurred');
       setSnackbar({
         open: true,
-        message: `Failed to ${approvalDialog.action} vendor`,
+        message: `Failed to ${approvalDialog.action} vendor: ${errorMsg}`,
         severity: 'error',
       });
     }
   };
 
   const getVendorsToDisplay = () => {
-    return activeTab === 'pending' ? pendingVendors : allVendors;
+    const baseVendors = activeTab === 'pending' ? pendingVendors : allVendors;
+    if (salespersonFilter === 'all') return baseVendors;
+    return baseVendors.filter(v => v.salesperson_email === salespersonFilter);
+  };
+
+  const renderVendorsBySalesperson = () => {
+    const baseVendors = activeTab === 'pending' ? pendingVendors : allVendors;
+
+    // Group vendors by salesperson email
+    const vendorsBySalesperson = baseVendors.reduce((groups, vendor) => {
+      const email = vendor.salesperson_email || 'Unassigned';
+      if (!groups[email]) {
+        groups[email] = [];
+      }
+      groups[email].push(vendor);
+      return groups;
+    }, {} as Record<string, Vendor[]>);
+
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {Object.entries(vendorsBySalesperson).map(([salespersonEmail, vendors]) => (
+          <Paper
+            key={salespersonEmail}
+            elevation={1}
+            sx={{
+              p: 3,
+              borderRadius: 2,
+              backgroundColor: 'background.paper',
+            }}
+          >
+            {/* Salesperson Header */}
+            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+              <PersonIcon sx={{ color: 'primary.main' }} />
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  {salespersonEmail}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {vendors.length} vendor{vendors.length !== 1 ? 's' : ''} •
+                  {vendors.filter(v => v.status === 'pending').length} pending •
+                  {vendors.filter(v => v.status === 'approved').length} approved •
+                  {vendors.filter(v => v.status === 'rejected').length} rejected
+                </Typography>
+              </Box>
+            </Box>
+
+            {/* Vendors Grid for this salesperson */}
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  lg: 'repeat(2, 1fr)',
+                },
+                gap: 3,
+              }}
+            >
+              {vendors.map((vendor) => (
+                <VendorApprovalCard
+                  key={vendor.id}
+                  vendor={vendor}
+                  onApprove={(vendor) => openApprovalDialog(vendor, 'approve')}
+                  onReject={(vendor) => openApprovalDialog(vendor, 'reject')}
+                  isPendingTab={activeTab === 'pending'}
+                />
+              ))}
+            </Box>
+          </Paper>
+        ))}
+      </Box>
+    );
   };
 
   if (loading) {
@@ -328,6 +403,27 @@ export default function AdminDashboard() {
                 iconPosition="start"
               />
             </Tabs>
+
+            {(activeTab === 'all' || activeTab === 'pending') && salespersonEmails.length > 1 && (
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1, mt: 2 }}>
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  Sort/Filter by Salesperson:
+                </Typography>
+                <FormControl size="small" sx={{ minWidth: 200 }}>
+                  <InputLabel>Salesperson</InputLabel>
+                  <Select
+                    value={salespersonFilter}
+                    label="Salesperson"
+                    onChange={(e) => setSalespersonFilter(e.target.value)}
+                  >
+                    <MenuItem value="all">All Salespeople ({salespersonEmails.length})</MenuItem>
+                    {salespersonEmails.map(email => (
+                      <MenuItem key={email} value={email}>{email}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+            )}
           </Box>
 
           <Box sx={{ mb: 4 }}>
@@ -352,26 +448,32 @@ export default function AdminDashboard() {
                 </Typography>
               </Paper>
             ) : (
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: {
-                    xs: '1fr',
-                    lg: 'repeat(2, 1fr)',
-                  },
-                  gap: 3,
-                }}
-              >
-                {getVendorsToDisplay().map((vendor) => (
-                  <VendorApprovalCard
-                    key={vendor.id}
-                    vendor={vendor}
-                    onApprove={(vendor) => openApprovalDialog(vendor, 'approve')}
-                    onReject={(vendor) => openApprovalDialog(vendor, 'reject')}
-                    isPendingTab={activeTab === 'pending'}
-                  />
-                ))}
-              </Box>
+              salespersonFilter === 'all' ? (
+                // Group vendors by salesperson when showing all
+                renderVendorsBySalesperson()
+              ) : (
+                // Show filtered vendors in grid
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      lg: 'repeat(2, 1fr)',
+                    },
+                    gap: 3,
+                  }}
+                >
+                  {getVendorsToDisplay().map((vendor) => (
+                    <VendorApprovalCard
+                      key={vendor.id}
+                      vendor={vendor}
+                      onApprove={(vendor) => openApprovalDialog(vendor, 'approve')}
+                      onReject={(vendor) => openApprovalDialog(vendor, 'reject')}
+                      isPendingTab={activeTab === 'pending'}
+                    />
+                  ))}
+                </Box>
+              )
             )}
           </Box>
         </Container>
@@ -524,6 +626,17 @@ function VendorApprovalCard({
           <Typography variant="body2" color="text.secondary">
             💰 Total Price: ₹{vendor.total_price}
           </Typography>
+        </Box>
+
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: vendor.status === 'approved' && vendor.approved_earnings ? 2 : (vendor.status === 'rejected' && vendor.rejection_reason ? 2 : 0) }}>
+          <Typography variant="body2" color="text.secondary">
+            👤 Created by: {vendor.salesperson_email || 'N/A'}
+          </Typography>
+          {(vendor.status === 'approved' || vendor.status === 'rejected') && (
+            <Typography variant="body2" color="text.secondary">
+              🎯 {vendor.status === 'approved' ? 'Approved' : 'Rejected'} by: {vendor.approver_email || 'N/A'}
+            </Typography>
+          )}
         </Box>
 
         {vendor.status === 'approved' && vendor.approved_earnings && (

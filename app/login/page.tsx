@@ -13,9 +13,23 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!loading && user) {
+      checkUserRoleAndRedirect();
+    }
+  }, [user, loading]);
+
+  const checkUserRoleAndRedirect = () => {
+    if (!user) return;
+
+    console.log('Checking login for user:', user.email);
+
+    if (user.email === 'admin@sylonow.com') {
+      console.log('Admin email detected, redirecting to /admin');
+      router.push('/admin');
+    } else {
+      console.log('Sales email detected, redirecting to /dashboard');
       router.push('/dashboard');
     }
-  }, [user, loading, router]);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,7 +37,7 @@ export default function LoginPage() {
 
     try {
       await signIn(email, password);
-      router.push('/dashboard');
+      // After sign in, the useEffect will trigger and handle redirection
     } catch (err) {
       setError('Invalid credentials');
     }
@@ -95,6 +109,16 @@ export default function LoginPage() {
             </button>
           </div>
         </form>
+
+        {/* Debug Link - Remove in production */}
+        <div className="text-center mt-4">
+          <button
+            onClick={() => router.push('/debug')}
+            className="text-sm text-gray-500 hover:text-gray-700 underline"
+          >
+            🔧 Debug Role-Based Navigation
+          </button>
+        </div>
       </div>
     </div>
   );

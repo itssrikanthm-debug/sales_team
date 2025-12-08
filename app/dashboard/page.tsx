@@ -157,8 +157,22 @@ export default function Dashboard() {
       return;
     }
 
+    if (user) {
+      checkUserAndHandleRole();
+    }
+  }, [user]);
+
+  const checkUserAndHandleRole = () => {
+    console.log('Dashboard: Checking user email:', user!.email);
+
+    if (user!.email === 'admin@sylonow.com') {
+      console.log('Dashboard: Admin email detected, redirecting to /admin');
+      router.replace('/admin');
+      return;
+    }
+
     loadDashboardData();
-  }, [user, router]);
+  };
 
   useEffect(() => {
     // Filter vendors based on status when vendors data changes
@@ -849,7 +863,8 @@ function VendorForm({
           verifiedPhotoUrl = await uploadFile(fileInputs.v_verified_screen, 'verified-photos');
         } catch (error: any) {
           // Only show warning, don't fail vendor creation
-          const message = error.message?.includes('STORAGE_NOT_CONFIGURED')
+          const message = error.message?.includes('STORAGE_NOT_CONFIGURED') ||
+                          error.message?.includes('Bucket not found')
             ? 'File storage not configured yet - photo uploads will be available after setup. Vendor will be created without photo.'
             : `Verified photo upload failed: ${error.message}. Vendor will be created without photo.`;
           onError(message);
@@ -862,7 +877,8 @@ function VendorForm({
           listingPhotoUrl = await uploadFile(fileInputs.v_listing_photo, 'business-photos');
         } catch (error: any) {
           // Only show warning, don't fail vendor creation
-          const message = error.message?.includes('STORAGE_NOT_CONFIGURED')
+          const message = error.message?.includes('STORAGE_NOT_CONFIGURED') ||
+                          error.message?.includes('Bucket not found')
             ? 'File storage not configured yet - photo uploads will be available after setup. Vendor will be created without photo.'
             : `Business photo upload failed: ${error.message}. Vendor will be created without photo.`;
           onError(message);
@@ -879,6 +895,7 @@ function VendorForm({
           v_address: formData.v_address.trim(),
           total_price: formData.total_price,
           salesperson_id: user!.id,
+          salesperson_email: user!.email!,
           verified_photo_url: verifiedPhotoUrl,
           business_photo_url: listingPhotoUrl,
           v_listing_count: formData.v_listing_count,

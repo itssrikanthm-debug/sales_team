@@ -23,12 +23,14 @@ CREATE TABLE public.vendors (
   verified_photo_url text NULL,
   business_photo_url text NULL,
   salesperson_id uuid NULL,
+  salesperson_email text NULL,
   created_at timestamp with time zone NULL DEFAULT now(),
   status text NOT NULL DEFAULT 'pending'::text,
   approved_listing_count integer NULL,
   approved_earnings numeric(10, 2) NULL,
   approved_at timestamp with time zone NULL,
   approved_by uuid NULL,
+  approver_email text NULL,
   rejection_reason text NULL,
   admin_notes text NULL,
   CONSTRAINT vendors_pkey PRIMARY KEY (id),
@@ -93,9 +95,21 @@ CREATE POLICY "Salespeople can view their own vendors" ON public.vendors
 CREATE POLICY "Salespeople can insert their own vendors" ON public.vendors
   FOR INSERT WITH CHECK (auth.uid() = salesperson_id);
 
--- Admin policy to view all vendors (adjust based on your admin role)
-CREATE POLICY "Admins can view all vendors" ON public.vendors
-  FOR ALL USING (auth.jwt() ->> 'role' = 'admin');
+-- Function to check if user is admin by email
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM auth.users
+    WHERE id = auth.uid()
+    AND email = 'admin@sylonow.com'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Admin policy to view all vendors (email-based)
+CREATE POLICY "Admins can manage all vendors" ON public.vendors
+  FOR ALL USING (is_admin());
 
 -- Public read access for categories
 CREATE POLICY "Categories are publicly readable" ON public.categories
@@ -119,6 +133,30 @@ GROUP BY
 
 -- Grant access to the view
 GRANT SELECT ON public.salesperson_earnings TO authenticated;
+
+-- Admin stats view (for 5 admin users)
+CREATE OR REPLACE VIEW public.admin_stats AS
+SELECT
+  approver_email,
+  COUNT(*) FILTER (WHERE status = 'approved'::text) AS approved_count,
+  COUNT(*) FILTER (WHERE status = 'rejected'::text) AS rejected_count,
+  COALESCE(
+    SUM(approved_earnings) FILTER (WHERE status = 'approved'::text),
+    0::numeric
+  ) AS total_earnings_approved
+FROM
+  vendors
+WHERE approver_email IS NOT NULL
+GROUP BY
+  approver_email;
+
+-- Grant access to admin stats (admin only)
+-- Note: This view is accessible to admins via the app, but restrict in RLS if needed
+GRANT SELECT ON public.admin_stats TO authenticated;
+
+-- Migration commands to add new columns (run these in Supabase SQL editor)
+-- ALTER TABLE public.vendors ADD COLUMN salesperson_email text NULL;
+-- ALTER TABLE public.vendors ADD COLUMN approver_email text NULL;
 
 -- Comments for documentation
 COMMENT ON TABLE public.vendors IS 'Main table for storing vendor information with approval workflow';
