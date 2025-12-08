@@ -161,24 +161,9 @@ export default function AdminDashboard() {
       return;
     }
 
-    checkAdminAccess();
-  }, [user]);
-
-  const checkAdminAccess = async () => {
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-
-    // Check admin access based on email
-    if (user.email !== 'admin@sylonow.com') {
-      router.push('/dashboard');
-      return;
-    }
-
-    await loadVendors();
+    loadVendors();
     setLoading(false);
-  };
+  }, [user]);
 
   const loadVendors = async () => {
     try {

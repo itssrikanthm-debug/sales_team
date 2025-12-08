@@ -12,12 +12,7 @@ export default function Home() {
     const checkUserAndRedirect = () => {
       if (!loading) {
         if (user) {
-          console.log('Checking user email:', user.email);
-          if (user.email === 'admin@sylonow.com') {
-            router.push('/admin');
-          } else {
-            router.push('/dashboard');
-          }
+          router.push('/dashboard');
         } else {
           router.push('/login');
         }

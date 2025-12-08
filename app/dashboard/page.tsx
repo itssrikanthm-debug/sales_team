@@ -157,22 +157,8 @@ export default function Dashboard() {
       return;
     }
 
-    if (user) {
-      checkUserAndHandleRole();
-    }
-  }, [user]);
-
-  const checkUserAndHandleRole = () => {
-    console.log('Dashboard: Checking user email:', user!.email);
-
-    if (user!.email === 'admin@sylonow.com') {
-      console.log('Dashboard: Admin email detected, redirecting to /admin');
-      router.replace('/admin');
-      return;
-    }
-
     loadDashboardData();
-  };
+  }, [user]);
 
   useEffect(() => {
     // Filter vendors based on status when vendors data changes
